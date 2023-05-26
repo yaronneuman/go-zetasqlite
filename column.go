@@ -3,7 +3,7 @@ package zetasqlite
 import (
 	"github.com/goccy/go-json"
 
-	internal "github.com/goccy/go-zetasqlite/internal"
+	internal "github.com/goccy/go-zetasqlite/zeta"
 )
 
 type ColumnType = internal.Type

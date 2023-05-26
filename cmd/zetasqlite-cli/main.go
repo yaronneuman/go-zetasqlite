@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/goccy/go-zetasqlite/zeta"
 	"io"
 	"os"
 	"reflect"
@@ -15,7 +16,6 @@ import (
 	"github.com/fatih/color"
 	"github.com/goccy/go-zetasql/types"
 	"github.com/goccy/go-zetasqlite"
-	"github.com/goccy/go-zetasqlite/internal"
 	"github.com/jessevdk/go-flags"
 	"github.com/olekukonko/tablewriter"
 	"golang.org/x/crypto/ssh/terminal"
@@ -199,7 +199,7 @@ func (cli *CLI) showTablesCommand(ctx context.Context) error {
 		if err := rows.Scan(&name, &spec); err != nil {
 			return err
 		}
-		var table internal.TableSpec
+		var table zeta.TableSpec
 		if err := json.Unmarshal([]byte(spec), &table); err != nil {
 			return err
 		}
@@ -227,7 +227,7 @@ func (cli *CLI) showFunctionsCommand(ctx context.Context) error {
 		if err := rows.Scan(&name, &spec); err != nil {
 			return err
 		}
-		var fn internal.FunctionSpec
+		var fn zeta.FunctionSpec
 		if err := json.Unmarshal([]byte(spec), &fn); err != nil {
 			return err
 		}
