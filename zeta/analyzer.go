@@ -44,6 +44,7 @@ func newAnalyzerOptions() *zetasql.AnalyzerOptions {
 		zetasql.FeatureV11HavingInAggregate,
 		zetasql.FeatureV11NullHandlingModifierInAggregate,
 		zetasql.FeatureV11NullHandlingModifierInAnalytic,
+		zetasql.FeatureCreateTableFieldAnnotations,
 		zetasql.FeatureV11OrderByCollate,
 		zetasql.FeatureV11SelectStarExceptReplace,
 		zetasql.FeatureV12SafeFunctionCall,
@@ -88,6 +89,7 @@ func newAnalyzerOptions() *zetasql.AnalyzerOptions {
 		ast.CreateTableFunctionStmt,
 		ast.CreateViewStmt,
 		ast.ShowStmt,
+		ast.DescribeStmt,
 	})
 	opt := zetasql.NewAnalyzerOptions()
 	opt.SetAllowUndeclaredParameters(true)
@@ -270,6 +272,8 @@ func (a *Analyzer) newStmtAction(ctx context.Context, query string, args []drive
 		return a.newCommitStmtAction(ctx, query, args, node)
 	case ast.ShowStmt:
 		return a.newShowStmtAction(ctx, query, args, node.(*ast.ShowStmtNode))
+	case ast.DescribeStmt:
+		return a.newDescribeStmtAction(ctx, query, args, node.(*ast.DescribeStmtNode))
 	}
 	return nil, fmt.Errorf("unsupported stmt %s", node.DebugString())
 }
@@ -438,6 +442,7 @@ func (a *Analyzer) newDropStmtAction(ctx context.Context, query string, args []d
 		objectType:     objectType,
 		funcMap:        funcMapFromContext(ctx),
 		catalog:        a.catalog,
+		ifNotExit:      node.IsIfExists(),
 		query:          query,
 		formattedQuery: formattedQuery,
 		args:           queryArgs,
@@ -504,7 +509,11 @@ func (a *Analyzer) newCommitStmtAction(ctx context.Context, query string, args [
 }
 
 func (a *Analyzer) newShowStmtAction(ctx context.Context, query string, args []driver.NamedValue, node *ast.ShowStmtNode) (*ShowStmtAction, error) {
-	return &ShowStmtAction{node: node}, nil
+	return &ShowStmtAction{node: node, path: a.NamePath()}, nil
+}
+
+func (a *Analyzer) newDescribeStmtAction(ctx context.Context, query string, args []driver.NamedValue, node *ast.DescribeStmtNode) (*DescribeStmtAction, error) {
+	return &DescribeStmtAction{node: node}, nil
 }
 
 func (a *Analyzer) newTruncateStmtAction(ctx context.Context, query string, args []driver.NamedValue, node *ast.TruncateStmtNode) (*TruncateStmtAction, error) {

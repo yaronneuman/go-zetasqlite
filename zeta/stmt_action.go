@@ -247,6 +247,7 @@ type DropStmtAction struct {
 	funcMap        map[string]*FunctionSpec
 	catalog        *Catalog
 	query          string
+	ifNotExit      bool
 	formattedQuery string
 	args           []interface{}
 }
@@ -258,7 +259,9 @@ func (a *DropStmtAction) exec(ctx context.Context, conn *Conn) error {
 			return fmt.Errorf("failed to exec %s: %w", a.query, err)
 		}
 		if err := a.catalog.DeleteTableSpec(ctx, conn, a.name); err != nil {
-			return fmt.Errorf("failed to delete table spec: %w", err)
+			if !a.ifNotExit {
+				return fmt.Errorf("failed to delete table spec: %w", err)
+			}
 		}
 	case "FUNCTION":
 		if err := a.catalog.DeleteFunctionSpec(ctx, conn, a.name); err != nil {
@@ -409,25 +412,25 @@ func (a *QueryStmtAction) Cleanup(ctx context.Context, conn *Conn) error {
 }
 
 type ShowStmtAction struct {
-	node  *ast.ShowStmtNode
-	query string
+	node *ast.ShowStmtNode
+	path []string
 }
 
 func (a *ShowStmtAction) Prepare(ctx context.Context, conn *Conn) (driver.Stmt, error) {
 	return nil, nil
 }
 
-func (a *ShowStmtAction) execShowCatalog(ctx context.Context, conn *Conn) (*Rows, error) {
+func (a *ShowStmtAction) execShowTables(ctx context.Context, conn *Conn) (*Rows, error) {
 	outputColumns := []*ColumnSpec{
 		{Name: "name", Type: &Type{Kind: types.STRING}},
-		{Name: "spec", Type: &Type{Kind: types.STRING}},
 	}
+	prefix := strings.Join(a.path, "_")
+	query := fmt.Sprintf(`SELECT name FROM zetasqlite_catalog WHERE kind = "table" and name like "%s%%"`, prefix)
 
-	rows, err := conn.QueryContext(ctx,
-		`SELECT name, spec FROM zetasqlite_catalog WHERE kind = "table"`)
+	rows, err := conn.QueryContext(ctx, query)
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to query %s: %w", a.query, err)
+		return nil, fmt.Errorf("failed to show tables. query: %s, err: %w", query, err)
 	}
 
 	return &Rows{rows: rows, columns: outputColumns, mode: "DECODED"}, nil
@@ -435,15 +438,14 @@ func (a *ShowStmtAction) execShowCatalog(ctx context.Context, conn *Conn) (*Rows
 
 func (a *ShowStmtAction) exec(ctx context.Context, conn *Conn) (*Rows, error) {
 	switch a.node.Identifier() {
-	case "CATALOG":
-		return a.execShowCatalog(ctx, conn)
+	case "TABLES":
+		return a.execShowTables(ctx, conn)
 	default:
 		return nil, fmt.Errorf("unsupported command SHOW %s", a.node.Identifier())
 	}
 }
 
 func (a *ShowStmtAction) ExecContext(ctx context.Context, conn *Conn) (driver.Result, error) {
-	a.exec(ctx, conn)
 	return nil, nil
 }
 
@@ -456,6 +458,58 @@ func (a *ShowStmtAction) Args() []interface{} {
 }
 
 func (a *ShowStmtAction) Cleanup(ctx context.Context, conn *Conn) error {
+	return nil
+}
+
+type DescribeStmtAction struct {
+	node  *ast.DescribeStmtNode
+	query string
+}
+
+func (a *DescribeStmtAction) Prepare(ctx context.Context, conn *Conn) (driver.Stmt, error) {
+	return nil, nil
+}
+
+func (a *DescribeStmtAction) execDescribeTable(ctx context.Context, conn *Conn, tableId []string) (*Rows, error) {
+	outputColumns := []*ColumnSpec{
+		{Name: "spec", Type: &Type{Kind: types.STRING}},
+	}
+	queryStr := fmt.Sprintf(`SELECT spec FROM zetasqlite_catalog WHERE kind = "table" and name="%s"`, strings.Join(tableId, "_"))
+	rows, err := conn.QueryContext(ctx, queryStr)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to query %s: %w", a.query, err)
+	}
+
+	return &Rows{rows: rows, columns: outputColumns, mode: "DECODED"}, nil
+}
+
+func (a *DescribeStmtAction) exec(ctx context.Context, conn *Conn) (*Rows, error) {
+	switch strings.ToUpper(a.node.ObjectType()) {
+	case "TABLE":
+		return a.execDescribeTable(ctx, conn, a.node.NamePath())
+	default:
+		return nil, fmt.Errorf("unsupported command DESCRIBE %s", a.node.ObjectType())
+	}
+}
+
+func (a *DescribeStmtAction) ExecContext(ctx context.Context, conn *Conn) (driver.Result, error) {
+	_, err := a.exec(ctx, conn)
+	if err != nil {
+		return nil, err
+	}
+	return nil, err
+}
+
+func (a *DescribeStmtAction) QueryContext(ctx context.Context, conn *Conn) (*Rows, error) {
+	return a.exec(ctx, conn)
+}
+
+func (a *DescribeStmtAction) Args() []interface{} {
+	return nil
+}
+
+func (a *DescribeStmtAction) Cleanup(ctx context.Context, conn *Conn) error {
 	return nil
 }
 
